@@ -1,7 +1,13 @@
 from pydantic import BaseModel
+from enum import Enum
+
+class RoleEnum(str, Enum):
+    admin = "admin"
+    coach = "coach"
 
 class UserBase(BaseModel):
     username: str
+    role: RoleEnum = RoleEnum.coach
     
 class UserCreate(UserBase):
     password: str
@@ -11,7 +17,6 @@ class UserLogin(UserBase):
 
 class UserOut(UserBase):
     id: int
-    is_admin: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
