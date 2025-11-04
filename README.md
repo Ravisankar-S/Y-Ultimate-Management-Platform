@@ -64,7 +64,7 @@ Keep this terminal activated for all backend commands. If you close it later, re
 
 ### 7. IMPORTANT – run the initialization scripts before starting the server
 
-These scripts build your schema and create the demo admin account. **Do not skip this step.**
+These scripts build your schema and create the demo admin account. **Do not skip this step.** Run them from the `backend` directory with your virtual environment activated.
 
 ```cmd
 python -m app.init_db
@@ -87,17 +87,19 @@ You should see Uvicorn logs indicating the server is live on `http://127.0.0.1:8
 
 ### 9. Reach the Swagger UI
 
-Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every REST endpoint and lets you supply the Bearer token after logging in.
+Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every REST endpoint and uses the OAuth2 password flow—click **Authorize** (top-right) and sign in with `admin` / `admin` (seeded above) to unlock protected routes.
 
 ### 10. Two-minute Swagger demo script
 
-1. **Login as admin**
-	 - Expand `POST /auth/login`, choose “Try it out”, then set:
-		 - `username`: `admin`
-		 - `password`: `admin`
-	 - Execute, copy the `access_token` value, and click the `Authorize` button (top-right). Supply `Bearer <token>` and close the dialog. All future calls will carry this token.
+1. **Authorize Swagger using OAuth2 password flow**
+	 - Click the green **Authorize** button at the top-right of Swagger (UI matches the attached screenshot).
+	 - Enter `admin` for **username** and `admin` for **password** (leave `client_id` and `client_secret` blank) and press **Authorize**, then **Close**. This step only succeeds after you run `python -m app.db.seed_admin`.
 
-2. **Create a tournament** (`POST /tournaments/`)
+2. **(Optional) Validate the login endpoint**
+	 - Expand `POST /auth/login`, choose “Try it out”, then set the same credentials.
+	 - Execute to confirm the credentials work and inspect the returned `access_token`. Swagger continues to use your username/password authorization, so copying the token is optional unless you plan to test with external clients.
+
+3. **Create a tournament** (`POST /tournaments/`)
 	 - Body example:
 		 ```json
 		 {
@@ -115,7 +117,7 @@ Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every 
 		 ```
 	 - Execute and note the returned `id` (e.g., `1`).
 
-3. **Add two participants** (`POST /participants/` twice)
+4. **Add two participants** (`POST /participants/` twice)
 	 - Example body:
 		 ```json
 		 {
@@ -128,8 +130,8 @@ Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every 
 		 ```
 	 - Record the generated participant IDs (e.g., `1` and `2`).
 
-4. **Register teams in the tournament** (`POST /tournaments/{id}/teams/`)
-	 - Use the tournament ID from step 2.
+5. **Register teams in the tournament** (`POST /tournaments/{id}/teams/`)
+	 - Use the tournament ID from step 3.
 	 - Body example for Team A:
 		 ```json
 		 {
@@ -140,7 +142,7 @@ Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every 
 		 ```
 	 - Repeat for Team B (`Thunder`, `manager_participant_id`: `2`). Capture the created team IDs.
 
-5. **Schedule a match** (`POST /matches/`)
+6. **Schedule a match** (`POST /matches/`)
 	 - Example payload:
 		 ```json
 		 {
@@ -153,16 +155,16 @@ Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every 
 		 ```
 	 - Note the returned match `id` (e.g., `1`).
 
-6. **Open a WebSocket listener** before changing the score
+7. **Open a WebSocket listener** before changing the score
 	 - In a browser tab (DevTools console) run:
 		 ```javascript
 		 const socket = new WebSocket('ws://127.0.0.1:8000/ws/matches/1');
 		 socket.onmessage = (event) => console.log('Live update:', event.data);
 		 ```
-	 - Keep the console visible to watch live Redis broadcasts.
+	 - Replace the `1` in the URL with the match ID from step 6 if it differs, and keep the console visible to watch live Redis broadcasts.
 
-7. **Patch the match score** (`PATCH /matches/{id}/score`)
-	 - Use the match ID from step 5.
+8. **Patch the match score** (`PATCH /matches/{id}/score`)
+	 - Use the match ID from step 6.
 	 - Example body:
 		 ```json
 		 {
@@ -173,7 +175,7 @@ Open `http://127.0.0.1:8000/docs` in your browser. This interface exposes every 
 		 ```
 	 - Execute and observe the WebSocket console showing the live update.
 
-8. **Submit a spirit score** (`POST /spirit/`)
+9. **Submit a spirit score** (`POST /spirit/`)
 	 - Example payload:
 		 ```json
 		 {
@@ -200,3 +202,5 @@ docker compose down
 ```
 
 Your Postgres volume persists between runs. To start again, repeat steps 3, 5 (activation only), 8, and 9. Remember to rerun `python -m app.init_db` and `python -m app.db.seed_admin` if you ever rebuild from an empty database.
+
+Due to a teammate health setback we finished this sprint as a one-dev pit crew; as a newcomer I wasn’t able to land the frontend in time, so we’re showcasing the backend infrastructure as-is.
