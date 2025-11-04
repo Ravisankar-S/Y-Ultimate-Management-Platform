@@ -34,5 +34,11 @@ class MatchOut(MatchBase):
     updated_at: Optional[datetime] = None
     spirit_scores: Optional[List[SpiritScoreOut]] = []  # nested output
 
+class MatchScoreUpdate(BaseModel):
+    """Used for updating match scores mid-game or after."""
+    score_a: int
+    score_b: int
+    status: Optional[str] = "ongoing"
+
     class Config:
         orm_mode = True
