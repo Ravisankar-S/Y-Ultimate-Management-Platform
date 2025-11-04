@@ -52,13 +52,17 @@ pip install -r requirements.txt
 
 ### 6. Provide environment variables
 
-Create the file `backend/.env` (from this same terminal) and add:
+Copy the template and fill in real values:
 
+```cmd
+copy .env.example .env
 ```
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/yultimate
-JWT_SECRET=super-secret-change-me
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-```
+
+Open `backend/.env` and set:
+
+- `DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/yultimate`
+- `JWT_SECRET=` (generate a strong secret via `python -c "import secrets; print(secrets.token_urlsafe(32))"` and paste the output)
+- `ACCESS_TOKEN_EXPIRE_MINUTES=1440`
 
 Keep this terminal activated for all backend commands. If you close it later, reactivate with `cd backend` followed by `.\.venv\Scripts\activate`.
 
