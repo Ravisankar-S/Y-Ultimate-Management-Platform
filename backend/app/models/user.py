@@ -24,8 +24,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime(timezone=True), nullable=True)
 
-    # participant_id = Column(Integer, ForeignKey("participants.id"), nullable=True)
     participant = relationship("Participant", back_populates="user", uselist=False)
+    tournaments = relationship("Tournament", back_populates="creator")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

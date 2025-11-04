@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import auth
+from app.routers import auth, health, tournament_routes, team, participant
 from app.db.session import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,6 +16,10 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 
 app.include_router(auth.router)
+app.include_router(health.router)
+app.include_router(tournament_routes.router)
+app.include_router(team.router)
+app.include_router(participant.router)
 
 @app.get("/")
 def root():
