@@ -1,3 +1,5 @@
+# now obsolete - kept for backward compatibility
+
 from app.db.session import SessionLocal
 from app.models import user, participant
 from app.models.user import User, RoleEnum

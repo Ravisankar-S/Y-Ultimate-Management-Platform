@@ -1,14 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import datetime, timedelta
+import json
+from collections import defaultdict
+
 from app.db.session import SessionLocal
-from app.models.match import Match
+from app.models.match import Match, MatchStatus
 from app.models.tournament import Tournament
-from app.models.team import Team
+from app.models.team import Team, TeamStatus
+from app.models.spirit_score import SpiritScore
 from app.schemas.match import MatchCreate, MatchOut, MatchUpdate, MatchScoreUpdate
 from app.core.redis import publish
 from app.routers.auth import get_current_user
 from app.models.user import User
+from app.core.deps import require_roles
 
 router = APIRouter(prefix="/matches", tags=["Matches"])
 
@@ -86,3 +93,114 @@ async def update_score(
 })
 
     return match
+
+@router.post("/tournaments/{tournament_id}/generate-matches", response_model=List[MatchOut])
+def generate_matches(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_roles("admin", "organizer")),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    teams = (
+        db.query(Team)
+        .filter(Team.tournament_id == tournament_id, Team.status == TeamStatus.approved)
+        .all()
+    )
+    if len(teams) < 2:
+        raise HTTPException(status_code=400, detail="At least two approved teams required")
+    
+    existing_matches = db.query(Match).filter(Match.tournament_id == tournament_id).count()
+    if existing_matches > 0:
+        raise HTTPException(status_code=400, detail="Matches have already been generated for this tournament")
+    
+    try:
+        fields = json.loads(tournament.fields_json) if tournament.fields_json else [] # type: ignore
+    except Exception:
+        fields = [tournament.fields_json] if tournament.fields_json else [] # type: ignore
+
+    if not fields:
+        fields = ["Field A", "Field B"]
+
+    start_date = tournament.start_date or datetime.utcnow().date()
+    start_time = datetime.combine(start_date, datetime.min.time()) + timedelta(hours=9)  # type: ignore # 9 AM start
+    time_gap = timedelta(minutes=60)  # 1 hour per match
+
+    new_matches = []
+    field_index = 0
+
+    for i in range(len(teams)):
+        for j in range(i + 1, len(teams)):
+            field_id = fields[field_index % len(fields)]
+            match = Match (
+                tournament_id=tournament_id,
+                team_a_id=teams[i].id,
+                team_b_id=teams[j].id,
+                field_id=field_id,
+                start_time=start_time,
+                status=MatchStatus.scheduled
+            )
+            db.add(match)
+            new_matches.append(match)
+
+            field_index += 1
+            start_time += time_gap
+
+    db.commit()
+
+    for m in new_matches:
+        db.refresh(m)
+
+    return new_matches
+
+@router.get("/tournaments/{tournament_id}/schedule", response_model=List[MatchOut])
+def get_tournament_schedule(tournament_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    
+    matches = (
+        db.query(Match)
+        .filter(Match.tournament_id == tournament_id)
+        .order_by(Match.start_time)
+        .all()
+    )
+
+    if not matches:
+        raise HTTPException(status_code=404, detail="No matches found for this tournament")
+
+    grouped = defaultdict(lambda: defaultdict(list))
+    
+    for m in matches:
+        field = m.field_id or "Unknown Field"
+        date = m.start_time.date().isoformat() if m.start_time else "Unknown Date" # type: ignore
+
+        grouped[date][field].append({
+            "match_id": m.id,
+            "team_a_id": m.team_a_id,
+            "team_b_id": m.team_b_id,
+            "score_a": m.score_a,
+            "score_b": m.score_b,
+            "status": m.status,
+            "start_time": m.start_time,
+            "end_time": m.end_time,
+        })
+
+        schedule = []
+        for date, fields in grouped.items():
+            schedule.append({
+                "date": date,
+                "fields": [{
+                    "field_id": f,
+                    "matches": sorted(ms, key=lambda x:x["start_time"] or datetime.min)
+                } for f, ms in fields.items()
+                ]
+            })
+
+            return {
+        "tournament_id": tournament_id,
+        "tournament_title": tournament.title,
+        "schedule": sorted(schedule, key=lambda x: x["date"])
+            }
