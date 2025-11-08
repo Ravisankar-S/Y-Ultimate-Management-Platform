@@ -7,6 +7,7 @@ from app.models.team import Team
 from app.models.match import Match
 from app.models.spirit_score import SpiritScore
 from app.models.participant import Participant
+from app.core.rate_limits import public_limiter, heavy_query_limiter
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -19,7 +20,7 @@ def get_db():
         db.close()
 
 
-@router.get("/overview")
+@router.get("/overview", dependencies=[Depends(public_limiter)])
 def get_global_analytics(db: Session = Depends(get_db)):
     """Return global analytics across all tournaments."""
     total_tournaments = db.query(func.count(Tournament.id)).scalar()
@@ -42,7 +43,7 @@ def get_global_analytics(db: Session = Depends(get_db)):
     return {"scope": "global", "data": data}
 
 
-@router.get("/tournaments/{tournament_id}")
+@router.get("/tournaments/{tournament_id}", dependencies=[Depends(heavy_query_limiter)])
 def get_tournament_analytics(tournament_id: int, db: Session = Depends(get_db)):
     """Return analytics for a specific tournament."""
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()

@@ -5,16 +5,16 @@ from app.models.spirit_score import SpiritScore
 from app.models.match import Match
 from app.schemas.spirit_score import SpiritScoreCreate, SpiritScoreOut
 from app.core.redis import publish
+from app.core.rate_limits import frequent_action_limiter
+from loguru import logger
 from datetime import datetime
 
 router = APIRouter(prefix="/spirit", tags=["Spirit Scores"])
 
-@router.post("/", response_model=SpiritScoreOut)
+@router.post("/", response_model=SpiritScoreOut, dependencies=[Depends(frequent_action_limiter)])
 async def submit_spirit_score(payload: SpiritScoreCreate, db: Session = Depends(get_db)):
-    """
-    Submit spirit score for a completed match.
-    Publishes to Redis: live:match:{match_id}
-    """
+    """Submit spirit score for a completed match."""
+    logger.info(f"Spirit score submission: Match {payload.match_id}, Team {payload.from_team_id} -> Team {payload.to_team_id}")
     match = db.query(Match).filter(Match.id == payload.match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -64,4 +64,5 @@ async def submit_spirit_score(payload: SpiritScoreCreate, db: Session = Depends(
         "comments": payload.comments,
     })
 
+    logger.success(f"Spirit score submitted: Total {total}/20")
     return spirit

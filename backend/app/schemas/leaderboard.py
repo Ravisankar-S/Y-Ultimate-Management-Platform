@@ -15,4 +15,4 @@ class LeaderboardTeamOut(BaseModel):
     spirit_avg: Optional[float] = 0.0
 
     class Config:
-        orm_mode = True
+        from_attributes = True

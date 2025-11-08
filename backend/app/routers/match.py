@@ -16,6 +16,8 @@ from app.core.redis import publish
 from app.routers.auth import get_current_user
 from app.models.user import User
 from app.core.deps import require_roles
+from app.core.rate_limits import frequent_action_limiter
+from loguru import logger
 
 router = APIRouter(prefix="/matches", tags=["Matches"])
 
@@ -27,12 +29,13 @@ def get_db():
         db.close()
 
 
-@router.post("/", response_model=MatchOut)
+@router.post("/", response_model=MatchOut, dependencies=[Depends(frequent_action_limiter)])
 def create_match(
     match_data: MatchCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    logger.info(f"Creating match: Tournament {match_data.tournament_id}, Team {match_data.team_a_id} vs {match_data.team_b_id}")
     tournament = db.query(Tournament).filter(Tournament.id == match_data.tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
@@ -47,6 +50,7 @@ def create_match(
     db.add(new_match)
     db.commit()
     db.refresh(new_match)
+    logger.success(f"Match {new_match.id} created")
     return new_match
 
 
@@ -67,13 +71,14 @@ def get_match(match_id: int, db: Session = Depends(get_db)):
     return match
 
 
-@router.patch("/{match_id}/score", response_model=MatchOut)
+@router.patch("/{match_id}/score", response_model=MatchOut, dependencies=[Depends(frequent_action_limiter)])
 async def update_score(
     match_id: int,
     score_data: MatchScoreUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    logger.info(f"Updating score for match {match_id}: {score_data.score_a}-{score_data.score_b}")
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -92,6 +97,7 @@ async def update_score(
     "status": match.status
 })
 
+    logger.success(f"Match {match_id} score updated and broadcast")
     return match
 
 @router.post("/tournaments/{tournament_id}/generate-matches", response_model=List[MatchOut])

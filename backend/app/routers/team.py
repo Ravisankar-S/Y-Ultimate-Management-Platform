@@ -6,10 +6,11 @@ from app.models.tournament import Tournament
 from app.schemas.team import TeamCreate, TeamOut
 from typing import List
 from app.routers.auth import get_current_user
+from app.core.rate_limits import frequent_action_limiter
 
 router = APIRouter(prefix="/tournaments", tags=["Teams"])
 
-@router.post("/{tournament_id}/teams/", response_model=TeamOut)
+@router.post("/{tournament_id}/teams/", response_model=TeamOut, dependencies=[Depends(frequent_action_limiter)])
 def register_team(
     tournament_id: int,
     team: TeamCreate,
@@ -30,7 +31,7 @@ def register_team(
     db.refresh(new_team)
     return new_team
 
-@router.get("/{tournament_id}/teams/", response_model=List[TeamOut])
+@router.get("/{tournament_id}/teams/", response_model=List[TeamOut], dependencies=[Depends(frequent_action_limiter)])
 def list_teams(
     tournament_id: int,
     db: Session = Depends(get_db),
@@ -39,7 +40,7 @@ def list_teams(
     teams = db.query(Team).filter(Team.tournament_id == tournament_id).all()
     return teams
 
-@router.patch("/teams/{team_id}/approve", response_model=TeamOut)
+@router.patch("/teams/{team_id}/approve", response_model=TeamOut, dependencies=[Depends(frequent_action_limiter)])
 def approve_team(
     team_id: int,
     db: Session = Depends(get_db)

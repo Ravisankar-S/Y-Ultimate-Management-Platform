@@ -10,10 +10,12 @@ from app.models.spirit_score import SpiritScore
 from app.core.deps import require_roles
 from app.routers.auth import get_current_user
 from app.models.user import User
+from app.core.rate_limits import heavy_query_limiter
+from loguru import logger
 
 router = APIRouter(prefix="/tournaments", tags=["Export"])
 
-# ✅ Dependency
+# Dependency
 def get_db():
     db = SessionLocal()
     try:
@@ -22,12 +24,13 @@ def get_db():
         db.close()
 
 
-@router.get("/{tournament_id}/export", response_class=StreamingResponse)
+@router.get("/{tournament_id}/export", response_class=StreamingResponse, dependencies=[Depends(heavy_query_limiter)])
 def export_tournament_data(
     tournament_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    logger.info(f"Export requested for tournament {tournament_id}")
     # Fetch tournament and its matches
     tournament = (
         db.query(Tournament)
@@ -100,11 +103,12 @@ def export_tournament_data(
     )
 
 
-@router.get("/export-all", response_class=StreamingResponse, dependencies=[Depends(require_roles("admin"))])
+@router.get("/export-all", response_class=StreamingResponse, dependencies=[Depends(require_roles("admin")), Depends(heavy_query_limiter)])
 def export_all_tournaments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    logger.info("Export all tournaments requested")
     tournaments = db.query(Tournament).options(joinedload(Tournament.matches)).all()
     if not tournaments:
         raise HTTPException(status_code=404, detail="No tournaments found")

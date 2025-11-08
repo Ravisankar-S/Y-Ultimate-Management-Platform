@@ -41,4 +41,4 @@ class MatchScoreUpdate(BaseModel):
     status: Optional[str] = "ongoing"
 
     class Config:
-        orm_mode = True
+        from_attributes = True

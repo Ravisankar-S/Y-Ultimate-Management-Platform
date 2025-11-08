@@ -7,6 +7,8 @@ from app.models.user import User, RoleEnum
 from app.schemas.user import UserCreate, UserLogin, UserOut
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.config import settings
+from app.core.rate_limits import auth_limiter
+from loguru import logger
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -29,27 +31,33 @@ def require_admin(current_user: User = Depends(lambda: get_current_user())):
     return current_user
 
 
-# ✅ Register new user (admin-only)
-@router.post("/register", response_model=UserOut)
+# Register new user (admin-only)
+@router.post("/register", response_model=UserOut, dependencies=[Depends(auth_limiter)])
 def register(user: UserCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    logger.info(f"Registration attempt for username: {user.username}")
     existing = db.query(User).filter(User.username == user.username).first()
     if existing:
+        logger.warning(f"Registration failed - username exists: {user.username}")
         raise HTTPException(status_code=400, detail="Username already exists")
     hashed_pw = hash_password(user.password)
     new_user = User(username=user.username, hashed_password=hashed_pw, role=user.role)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    logger.success(f"User registered: {user.username}")
     return new_user
 
 
-# ✅ Login
-@router.post("/login")
+# Login
+@router.post("/login", dependencies=[Depends(auth_limiter)])
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    logger.info(f"Login attempt for user: {form_data.username}")
     db_user = db.query(User).filter(User.username == form_data.username).first()
     if not db_user or not verify_password(form_data.password, db_user.hashed_password):  # type: ignore
+        logger.warning(f"Login failed for user: {form_data.username}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token({"sub": db_user.username})
+    logger.success(f"Login successful for user: {form_data.username}")
     return {"access_token": token, "token_type": "bearer"}
 
 

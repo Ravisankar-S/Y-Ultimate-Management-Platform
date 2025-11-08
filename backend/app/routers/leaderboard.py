@@ -7,10 +7,11 @@ from app.models.match import Match
 from app.models.spirit_score import SpiritScore
 from app.schemas.leaderboard import LeaderboardTeamOut
 from app.core.redis import publish
+from app.core.rate_limits import public_limiter
 
 router = APIRouter(prefix="/tournaments", tags=["Leaderboard"])
 
-@router.get("/{tournament_id}/leaderboard", response_model=list[LeaderboardTeamOut])
+@router.get("/{tournament_id}/leaderboard", response_model=list[LeaderboardTeamOut], dependencies=[Depends(public_limiter)])
 async def get_tournament_leaderboard(tournament_id: int, db: Session = Depends(get_db)):
     teams = db.query(Team).filter(Team.tournament_id == tournament_id).all()
     if not teams:

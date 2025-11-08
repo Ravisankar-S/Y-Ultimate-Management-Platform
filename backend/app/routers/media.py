@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.media import Media
 from app.schemas.media import MediaOut
-from app.routers.auth import get_current_user, User  # your User model
+from app.routers.auth import get_current_user, User
+from app.core.rate_limits import media_upload_limiter, public_limiter
+from loguru import logger
 from pathlib import Path
 
 router = APIRouter(prefix="/media", tags=["Media"])
@@ -21,7 +23,7 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/tournaments/{tournament_id}/upload", response_model=MediaOut)
+@router.post("/tournaments/{tournament_id}/upload", response_model=MediaOut, dependencies=[Depends(media_upload_limiter)])
 async def upload_tournament_media(
     tournament_id: int,
     file: UploadFile = File(...),
@@ -30,6 +32,7 @@ async def upload_tournament_media(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    logger.info(f"Media upload: {file.filename} for tournament {tournament_id}")
     ext = Path(file.filename).suffix # type: ignore
     new_name = f"{uuid.uuid4().hex}{ext}"
     dest = MEDIA_DIR / new_name
@@ -52,14 +55,14 @@ async def upload_tournament_media(
     db.add(media)
     db.commit()
     db.refresh(media)
+    logger.success(f"Media uploaded: {file.filename}")
     return media
 
-@router.get("/tournaments/{tournament_id}/gallery", response_model=list[MediaOut])
+@router.get("/tournaments/{tournament_id}/gallery", response_model=list[MediaOut], dependencies=[Depends(public_limiter)])
 def tournament_gallery(tournament_id: int, db: Session = Depends(get_db)):
     return db.query(Media).filter(Media.tournament_id == tournament_id, Media.is_public == True).order_by(Media.created_at.desc()).all()
 
-# optional: single-file downloads
-@router.get("/files/{filename}")
+@router.get("/files/{filename}", dependencies=[Depends(public_limiter)])
 def media_file(filename: str):
     path = MEDIA_DIR / filename
     if not path.exists():

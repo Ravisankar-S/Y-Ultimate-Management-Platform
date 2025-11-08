@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from app.db.session import SessionLocal
+from app.core.rate_limits import public_limiter
 import time
 import os
 
@@ -8,8 +9,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 start_time = time.time()
 
-@router.get("/")
-
+@router.get("/", dependencies=[Depends(public_limiter)])
 def health_check():
     """Health check endpoint."""
     db = SessionLocal()
