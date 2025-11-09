@@ -9,6 +9,7 @@ from app.routers import (
 from app.db.session import engine, Base
 from app.core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
+from app.middleware.logging_middleware import LoggingMiddleware
 from contextlib import asynccontextmanager
 import redis.asyncio as redis
 from fastapi_limiter import FastAPILimiter
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
         await FastAPILimiter.init(redis_connection)
         logger.success(f"Redis connected at {settings.REDIS_URL}")
         logger.success("Rate limiter initialized")
+        logger.success("Cache invalidation active")
     except Exception as e:
         logger.error(f"Failed to connect to Redis: {e}")
         logger.warning("Rate limiting will be disabled")
@@ -80,15 +82,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all requests with timing."""
-    start_time = time.time()
-    logger.info(f"{request.method} {request.url.path}")
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    logger.info(f"{request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
-    return response
+app.add_middleware(LoggingMiddleware)
 
 Base.metadata.create_all(bind=engine)
 

@@ -68,3 +68,33 @@ def media_file(filename: str):
     if not path.exists():
         raise HTTPException(404, "File not found")
     return FileResponse(path)
+
+
+@router.delete("/{media_id}", status_code=204)
+async def delete_media(
+    media_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    media = db.query(Media).filter(Media.id == media_id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Media not found")
+    
+    # Extract filename from URL path
+    filename = Path(media.url).name # type: ignore
+    file_path = MEDIA_DIR / filename
+    
+    # Delete from database
+    db.delete(media)
+    db.commit()
+    
+    # Delete physical file if it exists
+    if file_path.exists():
+        try:
+            file_path.unlink()
+            logger.info(f"Deleted media file: {filename}")
+        except Exception as e:
+            logger.warning(f"Failed to delete physical file {filename}: {e}")
+    
+    logger.info(f"Media record {media_id} deleted")
+    return None

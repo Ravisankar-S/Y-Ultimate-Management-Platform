@@ -6,6 +6,7 @@ from app.models.match import Match
 from app.schemas.spirit_score import SpiritScoreCreate, SpiritScoreOut
 from app.core.redis import publish
 from app.core.rate_limits import frequent_action_limiter
+from app.core.cache_utils import invalidate_tournament_analytics
 from loguru import logger
 from datetime import datetime
 
@@ -43,6 +44,7 @@ async def submit_spirit_score(payload: SpiritScoreCreate, db: Session = Depends(
         created_at=datetime.utcnow(),
     )
 
+    tournament_id = match.tournament_id
     db.add(spirit)
     db.commit()
     db.refresh(spirit)
@@ -65,4 +67,5 @@ async def submit_spirit_score(payload: SpiritScoreCreate, db: Session = Depends(
     })
 
     logger.success(f"Spirit score submitted: Total {total}/20")
+    await invalidate_tournament_analytics(tournament_id) # type: ignore
     return spirit

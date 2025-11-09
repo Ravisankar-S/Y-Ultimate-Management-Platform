@@ -27,3 +27,17 @@ def get_participant(participant_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Participant not found")
     return participant
 
+
+@router.delete("/{participant_id}", status_code=204)
+def delete_participant(
+    participant_id: int,
+    db: Session = Depends(get_db)
+):
+    participant = db.query(Participant).filter(Participant.id == participant_id).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    
+    db.delete(participant)
+    db.commit()
+    return None
+

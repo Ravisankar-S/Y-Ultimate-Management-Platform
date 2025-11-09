@@ -17,6 +17,7 @@ from app.routers.auth import get_current_user
 from app.models.user import User
 from app.core.deps import require_roles
 from app.core.rate_limits import frequent_action_limiter
+from app.core.cache_utils import invalidate_tournament_analytics
 from loguru import logger
 
 router = APIRouter(prefix="/matches", tags=["Matches"])
@@ -30,7 +31,7 @@ def get_db():
 
 
 @router.post("/", response_model=MatchOut, dependencies=[Depends(frequent_action_limiter)])
-def create_match(
+async def create_match(
     match_data: MatchCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -51,6 +52,7 @@ def create_match(
     db.commit()
     db.refresh(new_match)
     logger.success(f"Match {new_match.id} created")
+    await invalidate_tournament_analytics(match_data.tournament_id)
     return new_match
 
 
@@ -86,6 +88,7 @@ async def update_score(
     match.score_a = score_data.score_a # type: ignore
     match.score_b = score_data.score_b # type: ignore
     match.status = score_data.status # type: ignore
+    tournament_id = match.tournament_id
     db.commit()
     db.refresh(match)
 
@@ -98,7 +101,26 @@ async def update_score(
 })
 
     logger.success(f"Match {match_id} score updated and broadcast")
+    await invalidate_tournament_analytics(tournament_id) # type: ignore
     return match
+
+
+@router.delete("/{match_id}", status_code=204, dependencies=[Depends(frequent_action_limiter)])
+async def delete_match(
+    match_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    
+    tournament_id = match.tournament_id
+    db.delete(match)
+    db.commit()
+    logger.info(f"Match {match_id} deleted")
+    await invalidate_tournament_analytics(tournament_id) # type: ignore
+    return None
 
 @router.post("/tournaments/{tournament_id}/generate-matches", response_model=List[MatchOut])
 def generate_matches(

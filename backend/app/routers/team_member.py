@@ -64,3 +64,27 @@ def get_team_roster(
 
     roster = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
     return roster
+
+
+@router.delete("/{team_id}/roster/{member_id}", status_code=204)
+def remove_team_member(
+    team_id: int,
+    member_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    member = db.query(TeamMember).filter(
+        TeamMember.team_id == team_id,
+        TeamMember.id == member_id
+    ).first()
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    
+    db.delete(member)
+    db.commit()
+    return None
