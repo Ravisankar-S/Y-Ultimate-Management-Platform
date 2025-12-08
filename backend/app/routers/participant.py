@@ -4,10 +4,11 @@ from typing import List
 from app.routers.auth import get_db
 from app.models.participant import Participant
 from app.schemas.participant import ParticipantCreate, ParticipantOut
+from app.core.deps import require_roles
 
 router = APIRouter(prefix="/participants", tags=["participants"])
 
-@router.post("/", response_model=ParticipantOut)
+@router.post("/", response_model=ParticipantOut, dependencies=[Depends(require_roles("admin", "manager"))])
 def create_participant(participant: ParticipantCreate, db: Session = Depends(get_db)):
     new_participant = Participant(**participant.dict())
     db.add(new_participant)

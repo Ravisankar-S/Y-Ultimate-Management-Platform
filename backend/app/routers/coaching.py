@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
 from datetime import date
 
-from app.db.session import SessionLocal
+from app.core.deps import get_db, require_roles
 from app.models.session import Session as CoachingSession
 from app.models.attendance import Attendance
 from app.models.home_visit import HomeVisit
@@ -15,17 +15,8 @@ from app.schemas.session import SessionCreate, SessionOut
 from app.schemas.attendance import AttendanceCreate, AttendanceOut
 from app.schemas.home_visit import HomeVisitCreate, HomeVisitOut
 from app.schemas.lsas_assessment import LSASAssessmentCreate, LSASAssessmentOut
-from app.routers.auth import get_current_user
-from app.core.deps import require_roles
 
 router = APIRouter(prefix="/coaching", tags=["Coaching & Attendance"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("/sessions/", response_model=SessionOut)
@@ -39,6 +30,20 @@ def create_session(
     db.commit()
     db.refresh(new_session)
     return new_session
+
+
+@router.get("/sessions/", response_model=List[SessionOut])
+def list_sessions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("coach", "manager", "admin")),
+):
+    sessions = (
+        db.query(CoachingSession)
+        .order_by(CoachingSession.date.desc(), CoachingSession.id.desc())
+        .limit(50)
+        .all()
+    )
+    return sessions
 
 @router.post("/sessions/{session_id}/attendance", response_model=List[AttendanceOut])
 def mark_attendance(
@@ -121,7 +126,7 @@ def record_lsas_assessment(
 @router.get("/analytics/coaching-overview")
 def coaching_overview(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles("manager", "admin")),
+    current_user: User = Depends(require_roles("coach", "manager", "admin")),
 ):
     """
     Returns a high-level snapshot for coaches & managers:

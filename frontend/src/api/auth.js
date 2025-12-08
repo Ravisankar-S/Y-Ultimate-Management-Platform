@@ -12,3 +12,8 @@ export const login = async ({username, password}) => {
     });
     return res.data;
 };
+
+export const fetchCurrentUser = async () => {
+    const res = await api.get("/auth/me");
+    return res.data;
+};

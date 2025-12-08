@@ -24,7 +24,11 @@ def get_db():
         db.close()
 
 
-@router.get("/{tournament_id}/export", response_class=StreamingResponse, dependencies=[Depends(heavy_query_limiter)])
+@router.get(
+    "/{tournament_id}/export",
+    response_class=StreamingResponse,
+    dependencies=[Depends(require_roles("admin")), Depends(heavy_query_limiter)],
+)
 def export_tournament_data(
     tournament_id: int,
     db: Session = Depends(get_db),

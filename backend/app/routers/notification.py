@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.notification import Notification
@@ -46,3 +46,21 @@ def mark_as_read(notif_id: int, db: Session = Depends(get_db), current_user: Use
     db.commit()
     db.refresh(notif)
     return notif
+
+
+@router.delete("/{notif_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_notification(notif_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    notif = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == current_user.id).first()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    db.delete(notif)
+    db.commit()
+    return None
+
+
+@router.delete("/", status_code=status.HTTP_204_NO_CONTENT)
+def clear_notifications(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db.query(Notification).filter(Notification.user_id == current_user.id).delete(synchronize_session=False)
+    db.commit()
+    return None

@@ -34,6 +34,39 @@ class MatchOut(MatchBase):
     updated_at: Optional[datetime] = None
     spirit_scores: Optional[List[SpiritScoreOut]] = []  # nested output
 
+
+class MatchScheduleItem(BaseModel):
+    match_id: int
+    team_a_id: int
+    team_b_id: int
+    score_a: Optional[int] = None
+    score_b: Optional[int] = None
+    status: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FieldSchedule(BaseModel):
+    field_id: str
+    matches: List[MatchScheduleItem]
+
+
+class DailySchedule(BaseModel):
+    date: str
+    fields: List[FieldSchedule]
+
+
+class TournamentScheduleOut(BaseModel):
+    tournament_id: int
+    tournament_title: str
+    schedule: List[DailySchedule]
+
+    class Config:
+        from_attributes = True
+
 class MatchScoreUpdate(BaseModel):
     """Used for updating match scores mid-game or after."""
     score_a: int

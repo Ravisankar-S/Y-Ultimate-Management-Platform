@@ -11,7 +11,13 @@ from app.models.match import Match, MatchStatus
 from app.models.tournament import Tournament
 from app.models.team import Team, TeamStatus
 from app.models.spirit_score import SpiritScore
-from app.schemas.match import MatchCreate, MatchOut, MatchUpdate, MatchScoreUpdate
+from app.schemas.match import (
+    MatchCreate,
+    MatchOut,
+    MatchUpdate,
+    MatchScoreUpdate,
+    TournamentScheduleOut,
+)
 from app.core.redis import publish
 from app.routers.auth import get_current_user
 from app.models.user import User
@@ -30,7 +36,11 @@ def get_db():
         db.close()
 
 
-@router.post("/", response_model=MatchOut, dependencies=[Depends(frequent_action_limiter)])
+@router.post(
+    "/",
+    response_model=MatchOut,
+    dependencies=[Depends(frequent_action_limiter), Depends(require_roles("admin", "manager"))],
+)
 async def create_match(
     match_data: MatchCreate,
     db: Session = Depends(get_db),
@@ -41,11 +51,13 @@ async def create_match(
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
-    # Check if both teams exist in the same tournament
+    # Check if both teams exist in the same tournament and are approved
     for team_id in [match_data.team_a_id, match_data.team_b_id]:
         team = db.query(Team).filter(Team.id == team_id, Team.tournament_id == tournament.id).first()
         if not team:
             raise HTTPException(status_code=404, detail=f"Team {team_id} not found in tournament")
+        if team.status != TeamStatus.approved:
+            raise HTTPException(status_code=400, detail=f"Team {team_id} is not approved for matches")
 
     new_match = Match(**match_data.model_dump())
     db.add(new_match)
@@ -122,11 +134,15 @@ async def delete_match(
     await invalidate_tournament_analytics(tournament_id) # type: ignore
     return None
 
-@router.post("/tournaments/{tournament_id}/generate-matches", response_model=List[MatchOut])
+@router.post(
+    "/tournaments/{tournament_id}/generate-matches",
+    response_model=List[MatchOut],
+    dependencies=[Depends(require_roles("admin", "manager"))],
+)
 def generate_matches(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_roles("admin", "organizer")),
+    current_user = Depends(get_current_user),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -183,7 +199,7 @@ def generate_matches(
 
     return new_matches
 
-@router.get("/tournaments/{tournament_id}/schedule", response_model=List[MatchOut])
+@router.get("/tournaments/{tournament_id}/schedule", response_model=TournamentScheduleOut)
 def get_tournament_schedule(tournament_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -200,10 +216,10 @@ def get_tournament_schedule(tournament_id: int, db: Session = Depends(get_db), c
         raise HTTPException(status_code=404, detail="No matches found for this tournament")
 
     grouped = defaultdict(lambda: defaultdict(list))
-    
+
     for m in matches:
         field = m.field_id or "Unknown Field"
-        date = m.start_time.date().isoformat() if m.start_time else "Unknown Date" # type: ignore
+        date = m.start_time.date().isoformat() if m.start_time else "Unknown Date"  # type: ignore
 
         grouped[date][field].append({
             "match_id": m.id,
@@ -211,24 +227,28 @@ def get_tournament_schedule(tournament_id: int, db: Session = Depends(get_db), c
             "team_b_id": m.team_b_id,
             "score_a": m.score_a,
             "score_b": m.score_b,
-            "status": m.status,
+            "status": getattr(m.status, "value", m.status),
             "start_time": m.start_time,
             "end_time": m.end_time,
         })
-
-        schedule = []
-        for date, fields in grouped.items():
-            schedule.append({
-                "date": date,
-                "fields": [{
-                    "field_id": f,
-                    "matches": sorted(ms, key=lambda x:x["start_time"] or datetime.min)
-                } for f, ms in fields.items()
-                ]
+    schedule = []
+    for date, fields in grouped.items():
+        sorted_fields = []
+        for field_id, matches_list in fields.items():
+            sorted_matches = sorted(matches_list, key=lambda x: x["start_time"] or datetime.min)
+            sorted_fields.append({
+                "field_id": field_id,
+                "matches": sorted_matches,
             })
+        schedule.append({
+            "date": date,
+            "fields": sorted(sorted_fields, key=lambda x: x["field_id"]),
+        })
 
-            return {
+    schedule = sorted(schedule, key=lambda x: x["date"])
+
+    return {
         "tournament_id": tournament_id,
         "tournament_title": tournament.title,
-        "schedule": sorted(schedule, key=lambda x: x["date"])
-            }
+        "schedule": schedule,
+    }

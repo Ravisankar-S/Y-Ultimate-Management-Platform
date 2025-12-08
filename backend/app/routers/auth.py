@@ -1,39 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from app.db.session import SessionLocal
+from fastapi.security import OAuth2PasswordRequestForm
+
 from app.models.user import User, RoleEnum
-from app.schemas.user import UserCreate, UserLogin, UserOut
+from app.schemas.user import UserCreate, UserOut
 from app.core.security import hash_password, verify_password, create_access_token
-from app.core.config import settings
 from app.core.rate_limits import auth_limiter
+from app.core.deps import get_db, get_current_user, require_roles
 from loguru import logger
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-
-# ✅ DB Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# ✅ Admin-only dependency (move this up)
-def require_admin(current_user: User = Depends(lambda: get_current_user())):
-    if current_user.role != UserRole.admin:  # type: ignore
-        raise HTTPException(status_code=403, detail="Admins only")
-    return current_user
-
 
 # Register new user (admin-only)
 @router.post("/register", response_model=UserOut, dependencies=[Depends(auth_limiter)])
-def register(user: UserCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def register(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(RoleEnum.admin.value)),
+):
     logger.info(f"Registration attempt for username: {user.username}")
     existing = db.query(User).filter(User.username == user.username).first()
     if existing:
@@ -56,25 +41,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not db_user or not verify_password(form_data.password, db_user.hashed_password):  # type: ignore
         logger.warning(f"Login failed for user: {form_data.username}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": db_user.username})
+    token = create_access_token({"sub": db_user.username, "role": db_user.role.value})
     logger.success(f"Login successful for user: {form_data.username}")
-    return {"access_token": token, "token_type": "bearer"}
-
-
-# ✅ Fetch current user from JWT
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-        username: str = payload.get("sub")  # type: ignore
-        if username is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = db.query(User).filter(User.username == username).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
+    return {"access_token": token, "token_type": "bearer", "role": db_user.role.value}
 
 
 # ✅ Get current user profile

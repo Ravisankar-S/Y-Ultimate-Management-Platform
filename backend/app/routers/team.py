@@ -5,10 +5,11 @@ from app.routers.auth import get_db
 from app.models.team import Team, TeamStatus
 from app.models.tournament import Tournament
 from app.schemas.team import TeamCreate, TeamOut
-from typing import List
+from typing import List, Optional
 from app.routers.auth import get_current_user
 from app.core.rate_limits import frequent_action_limiter
 from app.core.cache_utils import invalidate_tournament_analytics
+from app.core.deps import require_roles
 
 router = APIRouter(prefix="/tournaments", tags=["Teams"])
 
@@ -48,13 +49,25 @@ async def register_team(
 @router.get("/{tournament_id}/teams/", response_model=List[TeamOut], dependencies=[Depends(frequent_action_limiter)])
 def list_teams(
     tournament_id: int,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    teams = db.query(Team).filter(Team.tournament_id == tournament_id).all()
+    query = db.query(Team).filter(Team.tournament_id == tournament_id)
+    if status:
+        try:
+            status_value = TeamStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid team status filter")
+        query = query.filter(Team.status == status_value)
+    teams = query.all()
     return teams
 
-@router.patch("/teams/{team_id}/approve", response_model=TeamOut, dependencies=[Depends(frequent_action_limiter)])
+@router.patch(
+    "/teams/{team_id}/approve",
+    response_model=TeamOut,
+    dependencies=[Depends(frequent_action_limiter), Depends(require_roles("admin"))],
+)
 async def approve_team(
     team_id: int,
     db: Session = Depends(get_db)

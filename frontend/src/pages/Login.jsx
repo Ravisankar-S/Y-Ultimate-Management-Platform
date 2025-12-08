@@ -1,14 +1,15 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
-import { login as apiLogin } from "../api/auth";
+import { login as apiLogin, fetchCurrentUser } from "../api/auth";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
-  const setToken = useAuthStore((s) => s.setToken);
+  const setAuth = useAuthStore((s) => s.setAuth);
+  const setRole = useAuthStore((s) => s.setRole);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -17,8 +18,18 @@ export default function Login() {
     setError(null);
     try {
       const data = await apiLogin({ username, password });
-      // data.access_token expected
-      setToken(data.access_token);
+      setAuth({ token: data.access_token, role: data.role });
+
+      if (!data.role) {
+        try {
+          const profile = await fetchCurrentUser();
+          if (profile?.role) {
+            setRole(profile.role);
+          }
+        } catch (fetchErr) {
+          console.warn("Failed to hydrate user role", fetchErr);
+        }
+      }
       qc.clear(); // clear react-query caches if any (optional)
       navigate("/dashboard");
     } catch (err) {

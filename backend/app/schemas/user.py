@@ -1,9 +1,5 @@
 from pydantic import BaseModel
-from enum import Enum
-
-class RoleEnum(str, Enum):
-    admin = "admin"
-    coach = "coach"
+from app.models.user import RoleEnum
 
 class UserBase(BaseModel):
     username: str
